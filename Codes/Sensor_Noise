@@ -1,0 +1,39 @@
+I = im2double(Inoisy);
+
+% Large neighborhood
+W = 15;
+
+% Local statistics
+localMean = imboxfilt(I,W);
+
+localVar = imboxfilt(I.^2,W) - localMean.^2;
+
+% Adaptive parameter
+k = mean(localVar(:));
+
+% Adaptive coefficient
+alpha = localVar ./ (localVar + k);
+
+% Filtering
+Ifiltered = localMean + alpha .* (I - localMean);
+
+%% Additional smoothing
+Ifiltered = imgaussfilt(Ifiltered,4.0);
+
+Ifiltered = mat2gray(Ifiltered);
+
+%% Display
+
+figure
+
+subplot(1,3,1)
+imshow(I,[])
+title('Original Image')
+
+subplot(1,3,2)
+imshow(Inoisy,[])
+title('CMOS Noisy Image')
+
+subplot(1,3,3)
+imshow(Ifiltered,[])
+title('Adaptive Filtered')
