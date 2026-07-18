@@ -1,0 +1,75 @@
+% Jose B. Lazaro Jr.
+clc;
+clear;
+close all;
+
+%% Read Input Image
+I = imread('AneScreening\Anemic\');
+
+% Convert to grayscale if RGB
+if size(I,3) == 3
+    Igray = rgb2gray(I);
+else
+    Igray = I;
+end
+
+Igray = im2double(Igray);
+
+%% Adaptive Background Estimation
+
+% Window size automatically determined
+[M,N] = size(Igray);
+
+winSize = round(min(M,N)/20);
+
+% Ensure odd window size
+if mod(winSize,2)==0
+    winSize = winSize + 1;
+end
+
+fprintf('Adaptive Window Size = %d x %d\n',winSize,winSize);
+illuminationField = medfilt2(Igray,[winSize winSize],'symmetric');
+
+epsilon = 0.01;
+
+Icorr = Igray ./ (illuminationField + epsilon);
+
+% Normalize output
+Icorr = mat2gray(Icorr);
+
+%% Contrast Enhancement
+Icorr = adapthisteq(Icorr,...
+                    'NumTiles',[8 8],...
+                    'ClipLimit',0.02);
+
+%% Quality Metrics
+meanBefore = mean(Igray(:));
+stdBefore  = std(Igray(:));
+
+meanAfter = mean(Icorr(:));
+stdAfter  = std(Icorr(:));
+
+fprintf('\nBefore Correction\n');
+fprintf('Mean = %.4f\n',meanBefore);
+fprintf('Std  = %.4f\n',stdBefore);
+
+fprintf('\nAfter Correction\n');
+fprintf('Mean = %.4f\n',meanAfter);
+fprintf('Std  = %.4f\n',stdAfter);
+
+figure('Color','white','Position',[100 100 1200 400]);
+
+subplot(1,3,1)
+imshow(Igray,[])
+title('Original Image')
+
+subplot(1,3,2)
+imshow(illuminationField,[])
+title('Estimated Illumination Field')
+
+subplot(1,3,3)
+imshow(Icorr,[])
+title('Corrected Image')
+
+imwrite(Icorr,'Corrected_Image.png');
+disp('Illumination Corrected Image Saved');
