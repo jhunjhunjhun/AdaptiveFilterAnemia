@@ -1,0 +1,23 @@
+function Out = adaptiveBloodFilter_FinalFix_1(I)
+    % Ensure input is double
+    I = im2double(I); 
+    
+    % Ensure the grayscale version is double
+    I_gray = adapthisteq(I);
+    
+    minArea = 100; 
+    bw = bwareaopen(I_gray < 0.65, minArea);
+    
+    % Ensure mask is double
+    mask = imgaussfilt(double(bw), 3); 
+    
+    % Ensure whiteBG is double
+    whiteBG = ones(size(I), 'double'); 
+    
+    % Now all variables (mask, I, whiteBG) are doubles
+    Out = (mask .* I) + ((1 - mask) .* whiteBG);
+    
+    % Apply lightening and filtering
+    Out = imadjust(Out, [0 1], [0.1 1], 0.7); 
+    Out = imbilatfilt(Out, 0.08, 3);
+end
