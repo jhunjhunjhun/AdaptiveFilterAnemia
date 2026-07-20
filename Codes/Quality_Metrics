@@ -1,0 +1,133 @@
+
+% root dataset directory and output directory
+rootDatasetFolder = 'AneScreening'; 
+outputRootFolder = 'Filtered';
+categories = {'Anemic', 'Normal'};
+
+% quantitative thresholds
+psnrThreshold = 30.0; 
+ssimThreshold = 0.90; 
+mseThreshold  = 0.001; 
+
+allFileNames = {};
+allCategories = {};
+psnrValues = [];
+ssimValues = [];
+mseValues = [];
+entropyOriginal = [];
+entropyFiltered = [];
+statusValues = {};
+
+windowSize = [3 3];
+
+for c = 1:length(categories)
+    categoryName = categories{c};
+    inputFolder = fullfile(rootDatasetFolder, categoryName);
+    outputFolder = fullfile(outputRootFolder, categoryName);
+    
+    if ~exist(outputFolder, 'dir')
+        mkdir(outputFolder);
+    end
+    
+    imageFiles = [dir(fullfile(inputFolder, '*.png')); ...
+                  dir(fullfile(inputFolder, '*.jpg')); ...
+                  dir(fullfile(inputFolder, '*.bmp'))];
+              
+    numImages = length(imageFiles);
+    fprintf('--> Processing folder: [%s] (%d images found)\n', categoryName, numImages);
+    
+    if numImages == 0
+        warning('No images found in folder: %s', inputFolder);
+        continue;
+    end
+    
+    for i = 1:numImages
+        fileName = imageFiles(i).name;
+        filePath = fullfile(inputFolder, fileName);
+        
+        origImg = imread(filePath);
+        
+        if size(origImg, 3) == 3
+            grayImg = rgb2gray(origImg);
+        else
+            grayImg = origImg;
+        end
+        
+        doubleImg = im2double(grayImg);
+        
+        % Apply Adaptive Wiener Filter
+        filteredImg = wiener2(doubleImg, windowSize);
+        
+        % Calculate Metrics
+        currPsnr = psnr(filteredImg, doubleImg);
+        currSsim = ssim(filteredImg, doubleImg);
+        currMse = immse(filteredImg, doubleImg);
+        currEntOrig = entropy(grayImg);
+        currEntFilt = entropy(im2uint8(filteredImg));
+        
+        % Evaluate Status
+        if (currPsnr >= psnrThreshold) && (currSsim >= ssimThreshold) && (currMse <= mseThreshold)
+            imgStatus = 'Acceptable';
+        else
+            imgStatus = 'Not Acceptable';
+        end
+        
+        % Store
+        allFileNames{end+1, 1} = fileName;
+        allCategories{end+1, 1} = categoryName;
+        psnrValues(end+1, 1) = currPsnr;
+        ssimValues(end+1, 1) = currSsim;
+        mseValues(end+1, 1) = currMse;
+        entropyOriginal(end+1, 1) = currEntOrig;
+        entropyFiltered(end+1, 1) = currEntFilt;
+        statusValues{end+1, 1} = imgStatus;
+        
+        % Save filtered image
+        imwrite(filteredImg, fullfile(outputFolder, ['filtered_', fileName]));
+    end
+end
+
+
+resultsTable = table(allCategories, allFileNames, psnrValues, ssimValues, mseValues, entropyOriginal, entropyFiltered, statusValues, ...
+    'VariableNames', {'Category', 'FileName', 'PSNR', 'SSIM', 'MSE', 'Entropy_Original', 'Entropy_Filtered', 'Status'});
+
+
+excelFileName = 'blood_smear_filtering_summary.xlsx';
+writetable(resultsTable, excelFileName, 'Sheet', 'Full Dataset Metrics');
+
+% Compute Summary Totals 
+uniqueCategories = unique(allCategories);
+summaryCategory = {};
+summaryTotal = [];
+summaryAcceptable = [];
+summaryNotAcceptable = [];
+summaryRate = [];
+
+for k = 1:length(uniqueCategories)
+    cat = uniqueCategories{k};
+    idx = strcmp(resultsTable.Category, cat);
+    totalCat = sum(idx);
+    accCat = sum(idx & strcmp(resultsTable.Status, 'Acceptable'));
+    notAccCat = totalCat - accCat;
+    rateCat = accCat / totalCat;
+    
+    summaryCategory{end+1, 1} = cat;
+    summaryTotal(end+1, 1) = totalCat;
+    summaryAcceptable(end+1, 1) = accCat;
+    summaryNotAcceptable(end+1, 1) = notAccCat;
+    summaryRate(end+1, 1) = rateCat;
+end
+
+% Add Total / Overall Summary Row
+summaryCategory{end+1, 1} = 'Total / Overall';
+summaryTotal(end+1, 1) = sum(summaryTotal);
+summaryAcceptable(end+1, 1) = sum(summaryAcceptable);
+summaryNotAcceptable(end+1, 1) = sum(summaryNotAcceptable);
+summaryRate(end+1, 1) = summaryAcceptable(end) / summaryTotal(end);
+
+summaryTable = table(summaryCategory, summaryTotal, summaryAcceptable, summaryNotAcceptable, summaryRate, ...
+    'VariableNames', {'Category', 'Total_Images', 'Acceptable', 'Not_Acceptable', 'Acceptance_Rate'});
+
+% Export Summary Table to Tab 1 of Excel File
+writetable(summaryTable, excelFileName, 'Sheet', 'Summary Dashboard');
+
